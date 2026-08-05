@@ -1,4 +1,4 @@
-# sigmastar-osdrv
+# sigmastar-sdk
 
 Prebuilt SigmaStar vendor binaries, kept out of the thingino firmware tree and
 fetched at build time by a pinned hash.
@@ -9,9 +9,14 @@ consumes it declares `LICENSE = PROPRIETARY` and `REDISTRIBUTE = NO`, which is
 only truthful if the binaries live outside that tree — the same arrangement
 `ingenic-lib` uses on the Ingenic side.
 
+Named `sdk` rather than `osdrv`: "osdrv" is OpenIPC's word, applied uniformly
+across every vendor they support and inherited from HiSilicon's SDK layout. It
+appears nowhere in SigmaStar's own sources. Unlike `ingenic-sdk` this payload is
+not built from source, but "SDK" still describes what it is.
+
 ## Layout
 
-One directory per Infinity family. `sigmastar-osdrv-infinity6e.mk` selects it
+One directory per Infinity family. `sigmastar-sdk-infinity6e.mk` selects it
 with `$(SOC_FAMILY)`, so adding a family is a directory, not a code change.
 
 ```
@@ -41,5 +46,5 @@ is available and none is claimed here.
 
 Consumers pin a commit hash, never a branch — a branch would let the payload
 change under a build with nothing in the image recording it. To move the pin,
-push here and bump `SIGMASTAR_OSDRV_INFINITY6E_VERSION` in
-`package/sigmastar-osdrv-infinity6e/sigmastar-osdrv-infinity6e.mk`.
+push here and bump `SIGMASTAR_SDK_INFINITY6E_VERSION` in
+`package/sigmastar-sdk-infinity6e/sigmastar-sdk-infinity6e.mk`.
