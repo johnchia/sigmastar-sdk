@@ -1,50 +1,74 @@
 # sigmastar-sdk
 
-Prebuilt SigmaStar vendor binaries, kept out of the thingino firmware tree and
+Kernel-side SigmaStar payload for thingino, kept out of the firmware tree and
 fetched at build time by a pinned hash.
 
-This repository exists so `thingino-firmware` does not redistribute several
-megabytes of proprietary vendor payload on every clone. The package that
-consumes it declares `LICENSE = PROPRIETARY` and `REDISTRIBUTE = NO`, which is
-only truthful if the binaries live outside that tree — the same arrangement
-`ingenic-lib` uses on the Ingenic side.
+Companion to [`sigmastar-lib`](https://github.com/johnchia/sigmastar-lib), which
+holds the prebuilt userspace MI libraries. The split follows thingino's Ingenic
+convention: `-lib` is userspace, `-sdk` is kernel-side. As with `ingenic-sdk`,
+this repository mixes prebuilt vendor artifacts with source that is compiled at
+build time.
 
-Named `sdk` rather than `osdrv`: "osdrv" is OpenIPC's word, applied uniformly
-across every vendor they support and inherited from HiSilicon's SDK layout. It
-appears nowhere in SigmaStar's own sources. Unlike `ingenic-sdk` this payload is
-not built from source, but "SDK" still describes what it is.
+This repository exists so `thingino-firmware` does not redistribute proprietary
+vendor payload on every clone. The packages that consume it declare
+`LICENSE = PROPRIETARY` and `REDISTRIBUTE = NO`, which is only truthful if the
+binaries live outside that tree — the same arrangement `ingenic-lib` uses.
 
 ## Layout
 
-One directory per Infinity family. `sigmastar-sdk-infinity6e.mk` selects it
-with `$(SOC_FAMILY)`, so adding a family is a directory, not a code change.
-
 ```
-infinity6e/
-  kmod/     mi_* and mhal kernel modules, vendor-built against Linux 4.9.84.
-            insmod verifies vermagic, so these load only on that kernel.
-  lib/      MI userspace libraries. The Raptor HAL dlopens these rather than
-            linking them, so they are not link-time dependencies — but an
-            image without them has daemons that start and fail at the first
-            HAL call.
-  sensor/
-    configs/    per-sensor ISP tuning blobs
-    firmware/   ISP firmware (chagall.bin), IQ file, isp_api.xml
+4.9.84/                            kernel release, as ingenic-sdk keys its tree
+  kmod-0607-glibc-9.1.0/           prebuilt vendor MI modules; see below
+  sensor-src/
+    infinity6e/  infinity6c/       sensor drivers, compiled here
+    infinity6b0/ infinity6/        (mirror of openipc/sensors)
+sensor-iq/<family>/                per-sensor API bins
+iqfile/                            CUS3A iqfile + isp_api.xml
+venc_fw/<family>/                  chagall.bin — VENC firmware
+PROVENANCE
 ```
 
-Only binaries live here. `load_sigmastar`, `zoom.sh` and `S20sigmastar` are
-thingino's own and stay in the firmware tree where they can be reviewed and
-diffed.
+**Read `PROVENANCE` before changing anything here.** It records which vendor
+build each artifact came from and why the paths are shaped this way.
 
-## Provenance
+### Why the modules carry a flavour in the directory name
 
-Ported from OpenIPC's `general/package/sigmastar-osdrv-infinity6e`. These are
-vendor-supplied binaries redistributed by SigmaStar's SDK licensees; no source
-is available and none is claimed here.
+`kmod-<release>-<libc>-<toolchain>` is not decoration. The vendor ships its
+modules under `<libc>/<gcc>` trees that are *not* one source built several ways:
+across a single release, `mi_sys.ko` differs by 27–29 imported kernel symbols
+between trees, differs in `depends=`, and the module sets differ outright.
+`vermagic` is byte-identical across all of them and `CONFIG_MODVERSIONS` is off,
+so `insmod` accepts a foreign module and it fails later — or misbehaves. The
+path is the only thing that records which build a module belongs to.
+
+The sensor drivers deliberately have *no* flavour key: `drv_sensor.h` is
+byte-identical across vendor releases nine months apart, and their only coupling
+to the vendor bundle is four `CamOs*` symbols from `mhal.ko`. Depth of nesting
+encodes coupling — flavour in the path means bound to one vendor build, absence
+means release-independent.
+
+### Case
+
+`<family>` is lowercase here and uppercase in `sigmastar-lib`. That mirrors
+thingino's own inconsistency (`ingenic-lib/T31` versus
+`ingenic-sdk/sensor-iq/t31`) and is deliberate — matching each repository's
+local convention beats inventing a third rule.
+
+## Provenance summary
+
+- **Modules** — harvested from a shipped camera firmware via OpenIPC's
+  `sigmastar-osdrv-infinity6e`. Alkaid `release_0607`, built 2022-06-07. Not
+  taken from a vendor SDK tarball; they match no public drop exactly.
+- **Sensor drivers** — mirror of `openipc/sensors`, sigmastar half only. These
+  are *not* vendor dumps: OpenIPC ships 11 of the vendor's 68, and the overlap
+  has diverged substantially. `gc4653` is retuned from 25fps to 30fps, which is
+  what this board streams.
+
+No source is available for the modules and none is claimed here.
 
 ## Updating
 
 Consumers pin a commit hash, never a branch — a branch would let the payload
 change under a build with nothing in the image recording it. To move the pin,
-push here and bump `SIGMASTAR_SDK_INFINITY6E_VERSION` in
-`package/sigmastar-sdk-infinity6e/sigmastar-sdk-infinity6e.mk`.
+push here and bump `SIGMASTAR_SDK_VERSION` in
+`package/sigmastar-sdk/sigmastar-sdk.mk`.

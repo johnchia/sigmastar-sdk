@@ -1,0 +1,96 @@
+# PROVENANCE — kernel-side payload
+
+## 4.9.84/kmod-0607-glibc-9.1.0/
+
+Prebuilt vendor MI kernel modules, from the same build as the userspace
+libraries in johnchia/sigmastar-lib:
+
+    release_0607   built 2022-06-07 09:51-09:52
+    project_commit ceb04c4
+    sdk_commit     dc99390
+    toolchain      GCC 9.1.0, glibc
+    vermagic       4.9.84 SMP preempt mod_unload ARMv7 thumb2 p2v8
+
+**The flavour is in the directory name because vermagic will not catch a
+mismatch.** The vendor ships these under <libc>/<gcc> trees that are not one
+source built several ways: across release_0601's own trees, mi_sys.ko differs by
+27-29 imported kernel symbols, differs in `depends=` (mi_common under
+glibc/9.1.0, empty under the others), and the module sets differ -- mi_ai.ko,
+mi_ao.ko and gc4653_MIPI.ko exist only under glibc/9.1.0. vermagic is byte
+identical across all of them and CONFIG_MODVERSIONS is off, so insmod accepts a
+foreign module and it fails later at symbol resolution, or misbehaves.
+
+Do not mix these with modules from another flavour directory.
+
+Previously johnchia/sigmastar-sdk @ cdfe9e3e8421dc6929d1e55dce22ab54e7556fd4, under infinity6e/kmod/.
+
+## 4.9.84/sensor-src/
+
+Mirror of openipc/sensors @ 8143e4da181d39d569572519595ce4b7e1a9a02d, sigmastar half only; the hisilicon half
+(916K) is not carried. Source, compiled here against the pinned kernel.
+
+These are **not** vendor dumps. The vendor SDK has 68 drivers; OpenIPC ships 11
+per family, renamed and reformatted, and the overlap has diverged -- gc4653, the
+one this board uses, is retuned from 25fps to 30fps (Preview_MAX_FPS 25->30,
+vts_25fps->vts_30fps, Preview_line_period 26667->22222, ENABLE_OTP_DD dropped,
+plus register init table edits). Five of the eleven do not exist in the vendor
+SDK at all. Re-deriving from the vendor tree would lose sensors and regress the
+board to 25fps.
+
+No flavour key, deliberately: drv_sensor.h is byte-identical between vendor
+releases 0601 and 0902, and the built driver's only coupling to the vendor
+bundle is four symbols -- CamOsMemAlloc, CamOsMemRelease, CamOsPrintf,
+CamOsUsSleep -- all exported by mhal.ko. Kernel-coupled, not release-coupled.
+
+Per family because driver filenames collide across families and drv_sensor.h
+genuinely differs (11 lines infinity6c vs infinity6e; infinity6c alone carries
+sensor_spi_api.h).
+
+## sensor-iq/<family>/
+
+Per-sensor API bins -- IQ Tool "save Bin" output, loaded by the application via
+MI_ISP_API_CmdLoadBinFile with user_key 1234. Distinct in both format and
+purpose from iqfile/ below; the two are not interchangeable. Naming follows
+ingenic-sdk/sensor-iq/<family>/.
+
+## iqfile/
+
+The CUS3A iqfile and its schema. Read from disk by CUS3A itself at AE init, from
+whatever MI_ISP_GetIspRoot reports. Vendor location: project/board/i6e/iqfile/.
+
+## venc_fw/<family>/
+
+chagall.bin is **VENC firmware**, not ISP and not sensor, despite having lived
+under sensor/firmware/ previously. Vendor location: project/board/i6e/venc_fw/,
+authoritative copy sdk/mhal/chip_common/venc/hal/i6e/chagall.bin. Per chip --
+the vendor ships a separate i6b0 copy.
+
+## Files
+
+    --- kmod ---
+    5b81b67d1112b964c2d63bc9192d26c5  mhal.ko
+    23399166398b6dd0c2fdf083adb5b781  mi_ai.ko
+    1a34d8ed022c35d38b55ff242b247e41  mi_ao.ko
+    1aac0ff76a862410b406b104ca679721  mi_common.ko
+    bcb0e1770d8517e3d973776e59544f60  mi_divp.ko
+    29078636d9157993baa139a44c468e08  mi_ldc.ko
+    e8388447a58978c25bc662326124b4e7  mi_mipitx.ko
+    569f346bf46f5917f5759caa1404cf54  mi_rgn.ko
+    5f4ff38c2ea5cda76b38db4d7d3fc976  mi_sensor.ko
+    41e940b37f1fc3521e81f31028c626b9  mi_shadow.ko
+    f800b515229c111ffbd537be4c4488ca  mi_sys.ko
+    05e631dcf6e3c5d505086dc26da153dc  mi_venc.ko
+    7bc5d9ae7ac136d13d9fd56735a8fed3  mi_vif.ko
+    777024a0aa32d85f9a4e7dda3ef7836c  mi_vpe.ko
+    --- sensor-iq/infinity6e ---
+    c12857f2065ff5de50947eb9c7d61b13  gc2053.bin
+    78369486c57a6d5eee03c4720e95f4aa  gc4653.bin
+    ea9cfcc99a2a8109376f81256407c527  imx307.bin
+    ace4bd06c576682384842e2b620e7c0b  imx335.bin
+    462193eea6de60b4754ffb1f571ed0ce  imx415.bin
+    dfe45f927c68fea70b85100448283411  sc501ai.bin
+    --- iqfile ---
+    d44143b021f34cf8c5cfb11698961eea  iqfile0.bin
+    404349e49293d7866569cbf086edbb63  isp_api.xml
+    --- venc_fw/infinity6e ---
+    6f109f34e089f466e41c6f7f5df7aa4e  chagall.bin
