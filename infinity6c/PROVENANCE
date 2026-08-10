@@ -121,6 +121,40 @@ carried -- nothing selects it, and the runtime resolves by driver name alone.
 infinity6e's it does match the vendor tree. Per chip: the i6c copies differ from
 i6e's and from each other across releases.
 
+## The kernel these pair with is not settled
+
+johnchia/linux `sigmastar-infinity6c` is **not** built from this drop, so loading
+these modules on it is unverified.
+
+Its BSP import, b335d21 "0000-infinity6c-kernel-5.10.61.patch", is authored by
+OpenIPC's Viktor in November 2023 and sits directly on vanilla Linux 5.10.61
+(230ca533). Compared against this SDK's own kernel source:
+
+    drivers/sstar          118 of ~1300 files differ
+    whole tree             255 files differ, 60 exist only in the branch
+                           (infinity6c DTS and defconfigs the SDK lacks)
+
+Of the three SSC377 drops, release_0907 is the closest -- 1183 identical BSP
+files against 1157 for 0712 and 1091 for 0602, and only 21 files it lacks
+against 60 and 71 -- which independently corroborates the choice of drop. It is
+still not a match, and the patch postdating all three by a year suggests it was
+cut from a newer SigmaStar release.
+
+**vermagic will not catch this.** b335d21's own i6c defconfig sets !SMP,
+PREEMPT, MODULE_UNLOAD and THUMB2_KERNEL, which composes exactly the string
+these modules carry:
+
+    5.10.61 preempt mod_unload ARMv7 thumb2 p2v8
+
+so insmod would accept them, and with CONFIG_MODVERSIONS off any ABI drift among
+those 118 files appears later as symbol resolution failure or misbehaviour. The
+differing files include cam_os_wrapper.c/.h and cam_os_export.c, which carry the
+CamOs* symbols the sensor drivers bind to.
+
+Before a port ships, either move the kernel branch to the BSP these were built
+against, or replace these with modules from the drop b335d21 was cut from.
+Whichever, record it here.
+
 ## Not consumed yet
 
 No thingino target builds Infinity6C -- there is no `soc/sigmastar/infinity6c.mk`
