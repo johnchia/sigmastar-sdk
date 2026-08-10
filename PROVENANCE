@@ -26,8 +26,30 @@ Previously johnchia/sigmastar-sdk @ cdfe9e3e8421dc6929d1e55dce22ab54e7556fd4, un
 
 ## 4.9.84/sensor-src/
 
-Mirror of openipc/sensors @ 8143e4da181d39d569572519595ce4b7e1a9a02d, sigmastar half only; the hisilicon half
+From openipc/sensors @ 8143e4da181d39d569572519595ce4b7e1a9a02d, sigmastar half only; the hisilicon half
 (916K) is not carried. Source, compiled here against the pinned kernel.
+
+Only the families a thingino target can select are here -- infinity6e and
+infinity6b0, the two SOC_FAMILY values soc/sigmastar/*.mk defines, both of which
+probe to 4.9.84 and so belong under this level.
+
+Upstream also ships infinity6 and infinity6c. Both were carried until 2026-08-10
+and neither was reachable: sigmastar-sdk.mk builds sensor-src/$(SOC_FAMILY) and
+nothing sets either value. infinity6c was additionally misfiled -- Infinity6C is
+a 5.10.61 family, so its drivers sat under a directory level that asserts 4.9.84.
+
+They arrived by mirroring upstream's sigmastar/ level wholesale. Upstream is not
+keyed by kernel release at all, so the mirror had nothing to check the families
+against; this level is our own and the copy imported past it. A family belongs
+here only if its kernel probes to 4.9.84.
+
+Restore either from the upstream hash above if a target appears -- infinity6c
+symlinks two of its drivers across to infinity6e, so it must come back with that
+link intact, and under a level matching its own kernel.
+
+Makefile and sensor_config.c stay at this level because every family symlinks to
+them, and the Makefile is upstream's verbatim -- including an infinity6c branch
+that is now dead. Left alone so the file still diffs cleanly against upstream.
 
 These are **not** vendor dumps. The vendor SDK has 68 drivers; OpenIPC ships 11
 per family, renamed and reformatted, and the overlap has diverged -- gc4653, the
@@ -42,9 +64,14 @@ releases 0601 and 0902, and the built driver's only coupling to the vendor
 bundle is four symbols -- CamOsMemAlloc, CamOsMemRelease, CamOsPrintf,
 CamOsUsSleep -- all exported by mhal.ko. Kernel-coupled, not release-coupled.
 
-Per family because driver filenames collide across families and drv_sensor.h
-genuinely differs (11 lines infinity6c vs infinity6e; infinity6c alone carries
-sensor_spi_api.h).
+Per family because the same filename is a different driver in each. Between the
+two families here, sensor_imx335_mipi.c differs by 1434 lines, sensor_imx307_mipi.c
+by 777 and sensor_gc2053_mipi.c by 10; drv_ms_cus_sensor.h differs too. Only
+sensor_gc4653_mipi.c is identical. drv_sensor.h happens to match between these
+two, so it is not what the split rests on -- the drivers are.
+
+The family also selects which drivers exist at all: 11 for infinity6e, 18 for
+infinity6b0.
 
 ## sensor-iq/<family>/
 

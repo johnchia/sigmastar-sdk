@@ -1,1 +1,0 @@
-../infinity6e/sensor_imx335_mipi.c

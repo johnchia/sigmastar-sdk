@@ -20,8 +20,8 @@ binaries live outside that tree — the same arrangement `ingenic-lib` uses.
 4.9.84/                            kernel release, as ingenic-sdk keys its tree
   kmod-0607-glibc-9.1.0/           prebuilt vendor MI modules; see below
   sensor-src/
-    infinity6e/  infinity6c/       sensor drivers, compiled here
-    infinity6b0/ infinity6/        (mirror of openipc/sensors)
+    infinity6e/ infinity6b0/       sensor drivers, compiled here
+                                   (from openipc/sensors)
 sensor-iq/<family>/                per-sensor API bins
 iqfile/                            CUS3A iqfile + isp_api.xml
 venc_fw/<family>/                  chagall.bin — VENC firmware
@@ -30,6 +30,12 @@ PROVENANCE
 
 **Read `PROVENANCE` before changing anything here.** It records which vendor
 build each artifact came from and why the paths are shaped this way.
+
+Only families a thingino target can actually select are carried, and only ones
+whose kernel matches the level they sit under. Upstream's sensor tree is not
+keyed by kernel release, so a wholesale mirror of it lands families that fail
+both tests — `infinity6c` is a 5.10.61 family and has no business under `4.9.84/`.
+Copy in the family you need, not the directory above it.
 
 ### Why the modules carry a flavour in the directory name
 
