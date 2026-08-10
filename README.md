@@ -28,6 +28,11 @@ infinity6e/
 infinity6b0/
   sensor-src/                      drivers only — no vendor payload yet
   PROVENANCE
+infinity6c/
+  kmod-5.10.61-0907-glibc-11.1.0/  both C library variants — they differ in
+  kmod-5.10.61-0907-uclibc-9.1.0/  content, not just codegen
+  sensor-src/ sensor-iq/ iqfile/ venc_fw/
+  PROVENANCE
 sensor-src-common/                 Makefile + sensor_config.c, symlinked
 PROVENANCE                         layout rules and shared source
 ```
@@ -36,10 +41,15 @@ PROVENANCE                         layout rules and shared source
 per family, in `<family>/PROVENANCE`; the top-level file covers the shared
 sensor source and the rule that decides what belongs where.
 
-Only families a thingino target can actually select are carried —
-`soc/sigmastar/*.mk` defines exactly `infinity6e` and `infinity6b0`. Upstream's
-sensor tree is not keyed the way this one is, so copy in the family you need,
-not the directory above it.
+Note the kernel release differs per family — Infinity6C is 5.10.61 while the
+other two are 4.9.84. Keying by family is what lets them sit side by side;
+a tree keyed by kernel release first could not hold this.
+
+`infinity6e` and `infinity6b0` are the families `soc/sigmastar/*.mk` defines.
+`infinity6c` has no target yet and is staged for one, alongside the userspace
+half in `sigmastar-lib` that the Raptor i6c backend needs. Upstream's sensor
+tree is not keyed the way this one is, so copy in the family you need, not the
+directory above it.
 
 ### Why the kernel release is inside the kmod directory name
 

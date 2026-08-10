@@ -1,0 +1,145 @@
+# PROVENANCE — infinity6c
+
+SigmaStar Infinity6C (vendor CHIP = i6c), the SSC377 line. Kernel-side payload.
+Userspace is johnchia/sigmastar-lib under the same family name and the same drop.
+
+Kernel 5.10.61, not the 4.9.84 the other two families run. That is why this tree
+is keyed by family rather than by kernel release -- see the top-level PROVENANCE.
+
+## Release
+
+    release_0907   built 2022-09-07
+    project_commit 3a7aec9
+    sdk_commit     3dcd67a
+    mhal_commit    a7acd5c
+    vermagic       5.10.61 preempt mod_unload ARMv7 thumb2 p2v8
+
+Taken from the vendor SDK release tree, not harvested from a shipped firmware
+and not taken from OpenIPC. Stronger provenance than the infinity6e entry, which
+was reconstructed from a camera image.
+
+    ssc377/release_0907/sourcecode/project/release/chip/i6c/ipc/common/
+      uclibc/9.1.0/modules/5.10/
+      glibc/11.1.0/modules/5.10/
+
+Same drop as johnchia/sigmastar-lib's infinity6c libraries, and the build stamps
+agree to the minute -- kernel and userspace halves of one build:
+
+    uclibc  9.1.0   modules build_time.20220907111124   libs 20220907111141
+    glibc  11.1.0   modules build_time.20220907112106   libs 20220907112126
+
+Why release_0907 and not the other two SSC377 drops is argued in
+sigmastar-lib's infinity6c/PROVENANCE; the same reasoning selects it here.
+
+## Both C library variants are carried
+
+They are not one source built two ways. glibc ships three modules uclibc does
+not:
+
+    mi_jpd.ko  mi_vdec.ko  mi_vdisp.ko
+
+    uclibc  9.1.0   19 modules
+    glibc  11.1.0   22 modules
+
+and mi_sys.ko differs between them. This mirrors the userspace split in
+sigmastar-lib, where glibc likewise carries two libraries uclibc lacks. The C
+library component of the path selects content, not merely codegen, so a build
+that picks the wrong one is missing modules rather than getting differently
+compiled ones.
+
+`soc/sigmastar/infinity6c.mk` will have to name which variant a port uses, via
+SIGMASTAR_LIBC and SIGMASTAR_GCC, and it must be the same choice sigmastar-lib
+is indexed with.
+
+## MI modules only
+
+The vendor's `modules/5.10` holds 143 (uclibc) / 146 (glibc) modules, of which
+120-odd are prebuilt sensor drivers. Those are not carried: sensors are built
+from `sensor-src/` here as they are for every other family, which is what keeps
+them independent of the vendor's kernel build.
+
+## Stripped of debug info
+
+The vendor ships these unstripped -- 14 `.debug*` sections each, 59M (uclibc)
+and 37M (glibc) for the MI modules alone. They are carried stripped:
+
+    arm-thingino-linux-gnueabihf-strip --strip-debug mi_*.ko
+
+    uclibc  59M -> 3.7M
+    glibc   37M -> 4.0M
+
+Checked rather than assumed, on mi_sys.ko: the exported symbol set is identical
+(176 `__ksymtab_*` entries before and after), the imported symbol count is
+unchanged at 236, and `vermagic`, `depends=mi_common` and the Sigmastar build
+stamp all survive. Only `.debug*` sections are gone. The infinity6e modules
+beside this carry no debug sections either, having been through a firmware
+image, so this also makes the two families consistent.
+
+This is the one place the repository modifies vendor bytes, so the md5s below
+are of the stripped files. The originals are recoverable by re-running the strip
+above against the vendor path named earlier:
+
+    mi_sys.ko  uclibc   vendor c9e29a1f...  here 2ff20927...
+    mi_sys.ko  glibc    vendor 91515d8c...  here 6de03cec...
+
+## sensor-src/
+
+10 drivers: 8 carried here, plus imx335 and imx415 symlinked across to
+infinity6e, which is how upstream ships them. Source, compiled at build time.
+Origin and the reason for the per-family split are in the top-level PROVENANCE.
+
+These were removed in 4b08ea4 as an unreachable family and restored here from
+cca10f4 when the family gained payload.
+
+## iqfile/
+
+`isp_api.xml` is the vendor's own, unlike infinity6e's, which matches no vendor
+copy.
+
+`iqfile0.bin` is the vendor's default CUS3A iqfile. The vendor ships it under
+two sensor names -- `iqfile/sc430ai/sc430ai_iqfile.bin` and
+`iqfile/imx307/imx307_iqfile.bin` -- and the two are **byte-identical**, so it
+is one file here under the name CUS3A reads. Note this is unlike infinity6e,
+where `iqfile0.bin` really is one sensor's tuning (imx415's) standing in as a
+default.
+
+## sensor-iq/
+
+Per-sensor API bins, from the vendor's `iqfile/<sensor>/<SENSOR>_MIPI_api.bin`,
+renamed to the lowercase driver name that raptor resolves tuning by. The vendor
+ships these for two sensors only, both genuinely distinct:
+
+    sc430ai.bin   56737fd6
+    imx307.bin    c6bf43fd
+
+An HDR variant, `SC430AI_MIPI_HDR_api.bin`, exists in the vendor tree and is not
+carried -- nothing selects it, and the runtime resolves by driver name alone.
+
+## venc_fw/
+
+`chagall.bin` is VENC firmware. The vendor's own i6c copy, and unlike
+infinity6e's it does match the vendor tree. Per chip: the i6c copies differ from
+i6e's and from each other across releases.
+
+## Not consumed yet
+
+No thingino target builds Infinity6C -- there is no `soc/sigmastar/infinity6c.mk`
+and so no SOC_FAMILY that resolves to this directory. This is staged for a port,
+alongside the userspace half in sigmastar-lib, which the Raptor i6c backend
+needs. Nothing here has been loaded on hardware.
+
+No source is available for the prebuilt artifacts and none is claimed here.
+
+## Files
+
+    --- kmod-5.10.61-0907-uclibc-9.1.0 (19) ---
+    mi_ai mi_aio mi_ao mi_common mi_disp mi_dummy mi_fb mi_ipu mi_isp mi_ldc
+    mi_panel mi_rgn mi_scl mi_sensor mi_shadow mi_sys mi_vcodec mi_venc mi_vif
+    --- kmod-5.10.61-0907-glibc-11.1.0 (22) ---
+    the same, plus mi_jpd mi_vdec mi_vdisp
+    --- blobs ---
+    dfa6a803efce1a92f0386672f2dacdc4  venc_fw/chagall.bin
+    32e7a63d2f6c7393d0d6be1b2b7f3e36  iqfile/isp_api.xml
+    4dac014257206af8cc76fc3ddcc58b5b  iqfile/iqfile0.bin
+    56737fd643c62eedc321a59b3f0436e0  sensor-iq/sc430ai.bin
+    c6bf43fd65598621fa5d8c1627bbde35  sensor-iq/imx307.bin
