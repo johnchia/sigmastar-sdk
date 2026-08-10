@@ -140,20 +140,41 @@ against 60 and 71 -- which independently corroborates the choice of drop. It is
 still not a match, and the patch postdating all three by a year suggests it was
 cut from a newer SigmaStar release.
 
-**vermagic will not catch this.** b335d21's own i6c defconfig sets !SMP,
-PREEMPT, MODULE_UNLOAD and THUMB2_KERNEL, which composes exactly the string
-these modules carry:
+**vermagic will not catch a mismatch.** b335d21's own i6c defconfig sets !SMP,
+PREEMPT, MODULE_UNLOAD and THUMB2_KERNEL, composing exactly the string these
+modules carry:
 
     5.10.61 preempt mod_unload ARMv7 thumb2 p2v8
 
-so insmod would accept them, and with CONFIG_MODVERSIONS off any ABI drift among
-those 118 files appears later as symbol resolution failure or misbehaviour. The
-differing files include cam_os_wrapper.c/.h and cam_os_export.c, which carry the
-CamOs* symbols the sensor drivers bind to.
+and CONFIG_MODVERSIONS is off, so insmod would accept them whether or not they
+fit. The pairing therefore has to be argued from the code, not from load-time
+behaviour. Doing that, it looks sound:
 
-Before a port ships, either move the kernel branch to the BSP these were built
-against, or replace these with modules from the drop b335d21 was cut from.
-Whichever, record it here.
+  - Every sstar symbol these modules import is exported by the BSP. mi_sys.ko
+    has 235 undefined symbols, 81 of them sstar; b335d21's drivers/sstar exports
+    727, and all 81 are among them.
+  - The one ABI-relevant header difference is inert here. b335d21's
+    cam_os_struct.h sizes CAM_OS_RWTSEM_SIZE with an added
+    sizeof(struct lock_class_key), which 0907's does not -- but that struct is
+    `{ }` when lockdep is off, and every i6c defconfig leaves CONFIG_LOCKDEP
+    unset, so both compute the same size.
+  - b335d21's other change there is an addition: a kernel-side
+    CAM_OS_RTMUTEX_SIZE that 0907 has no equivalent of. Older modules cannot
+    call what they were never compiled against.
+  - The CamOs* declarations the sensor drivers bind to -- CamOsMemAlloc,
+    CamOsMemRelease, CamOsPrintf, CamOsUsSleep -- are byte-identical between the
+    two headers; only their line numbers moved.
+
+OpenIPC ships a wider spread than this and it works in production: their
+sigmastar-osdrv-infinity6c pairs an mi.ko from a June 2024 drop
+(project_commit.699b9f2 sdk_commit.7d2dfd4 mhal_commit.f76c372) with userspace
+libraries from release_0907 -- the same 3a7aec9/3dcd67a/a7acd5c these modules
+come from -- on this same BSP. Three vintages in one image. Their mi.ko's 103
+sstar imports all resolve against b335d21 too.
+
+So the pairing is plausible rather than verified. What is not established is
+struct layout across all 118 differing files, and nothing here has been run on
+hardware. Confirm on a board before trusting it, and record the result.
 
 ## Not consumed yet
 
