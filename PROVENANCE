@@ -1,55 +1,46 @@
-# PROVENANCE — kernel-side payload
+# PROVENANCE — layout and shared source
 
-## 4.9.84/kmod-0607-glibc-9.1.0/
+Payload provenance is per family, in `<family>/PROVENANCE`. This file covers the
+two things that are not per family, and the rule that decides which level
+anything belongs at.
 
-Prebuilt vendor MI kernel modules, from the same build as the userspace
-libraries in johnchia/sigmastar-lib:
+## The family is the top-level key
 
-    release_0607   built 2022-06-07 09:51-09:52
-    project_commit ceb04c4
-    sdk_commit     dc99390
-    toolchain      GCC 9.1.0, glibc
-    vermagic       4.9.84 SMP preempt mod_unload ARMv7 thumb2 p2v8
+Every artifact here is chip-coupled: the prebuilt MI modules are built for one
+chip, the sensor drivers differ per family under identical filenames, and the
+ISP and VENC blobs are per chip in the vendor's own tree. So the family is the
+outermost directory and each family is self-contained.
 
-**The flavour is in the directory name because vermagic will not catch a
-mismatch.** The vendor ships these under <libc>/<gcc> trees that are not one
-source built several ways: across release_0601's own trees, mi_sys.ko differs by
-27-29 imported kernel symbols, differs in `depends=` (mi_common under
-glibc/9.1.0, empty under the others), and the module sets differ -- mi_ai.ko,
-mi_ao.ko and gc4653_MIPI.ko exist only under glibc/9.1.0. vermagic is byte
-identical across all of them and CONFIG_MODVERSIONS is off, so insmod accepts a
-foreign module and it fails later at symbol resolution, or misbehaves.
+This replaces a layout keyed by kernel release first. That level asserted a
+property of the *kernel* about payload that is a property of the *chip*, and it
+let two mistakes in that the current shape makes unrepresentable:
 
-Do not mix these with modules from another flavour directory.
+  - infinity6c sensor drivers filed under `4.9.84/` when Infinity6C is a 5.10.61
+    family. Removed 2026-08-10.
+  - one `kmod-` directory outside any family, so `sigmastar-sdk.mk` resolved it
+    without `$(SOC_FAMILY)` and an Infinity6B0 build would have installed
+    Infinity6E's MI modules. Same-chip only by luck of there being one family.
 
-Previously johnchia/sigmastar-sdk @ cdfe9e3e8421dc6929d1e55dce22ab54e7556fd4, under infinity6e/kmod/.
+The kernel release did not disappear -- it moved into the kmod directory name,
+which is the one place a mismatch is fatal and undetectable. See the family
+files for why.
 
-## 4.9.84/sensor-src/
+## sensor-src-common/
 
-From openipc/sensors @ 8143e4da181d39d569572519595ce4b7e1a9a02d, sigmastar half only; the hisilicon half
-(916K) is not carried. Source, compiled here against the pinned kernel.
+`Makefile` and `sensor_config.c`, which every family's `sensor-src/` symlinks to
+as `../../sensor-src-common/`. Upstream keeps them one level above the families
+and the families symlink up; that arrangement is preserved, just at a path that
+survives the families being hoisted.
 
-Only the families a thingino target can select are here -- infinity6e and
-infinity6b0, the two SOC_FAMILY values soc/sigmastar/*.mk defines, both of which
-probe to 4.9.84 and so belong under this level.
+Both are upstream's verbatim, including a `SIGMASTAR_MARUKO` branch for
+infinity6c that is now dead. Left alone so the file still diffs cleanly against
+upstream.
 
-Upstream also ships infinity6 and infinity6c. Both were carried until 2026-08-10
-and neither was reachable: sigmastar-sdk.mk builds sensor-src/$(SOC_FAMILY) and
-nothing sets either value. infinity6c was additionally misfiled -- Infinity6C is
-a 5.10.61 family, so its drivers sat under a directory level that asserts 4.9.84.
+## Sensor drivers, all families
 
-They arrived by mirroring upstream's sigmastar/ level wholesale. Upstream is not
-keyed by kernel release at all, so the mirror had nothing to check the families
-against; this level is our own and the copy imported past it. A family belongs
-here only if its kernel probes to 4.9.84.
-
-Restore either from the upstream hash above if a target appears -- infinity6c
-symlinks two of its drivers across to infinity6e, so it must come back with that
-link intact, and under a level matching its own kernel.
-
-Makefile and sensor_config.c stay at this level because every family symlinks to
-them, and the Makefile is upstream's verbatim -- including an infinity6c branch
-that is now dead. Left alone so the file still diffs cleanly against upstream.
+From openipc/sensors @ 8143e4da181d39d569572519595ce4b7e1a9a02d, sigmastar half
+only; the hisilicon half (916K) is not carried. Source, compiled at build time
+against the pinned kernel.
 
 These are **not** vendor dumps. The vendor SDK has 68 drivers; OpenIPC ships 11
 per family, renamed and reformatted, and the overlap has diverged -- gc4653, the
@@ -59,65 +50,28 @@ plus register init table edits). Five of the eleven do not exist in the vendor
 SDK at all. Re-deriving from the vendor tree would lose sensors and regress the
 board to 25fps.
 
-No flavour key, deliberately: drv_sensor.h is byte-identical between vendor
+No flavour key, deliberately: `drv_sensor.h` is byte-identical between vendor
 releases 0601 and 0902, and the built driver's only coupling to the vendor
 bundle is four symbols -- CamOsMemAlloc, CamOsMemRelease, CamOsPrintf,
 CamOsUsSleep -- all exported by mhal.ko. Kernel-coupled, not release-coupled.
 
 Per family because the same filename is a different driver in each. Between the
-two families here, sensor_imx335_mipi.c differs by 1434 lines, sensor_imx307_mipi.c
-by 777 and sensor_gc2053_mipi.c by 10; drv_ms_cus_sensor.h differs too. Only
-sensor_gc4653_mipi.c is identical. drv_sensor.h happens to match between these
-two, so it is not what the split rests on -- the drivers are.
+two families here, `sensor_imx335_mipi.c` differs by 1434 lines,
+`sensor_imx307_mipi.c` by 777 and `sensor_gc2053_mipi.c` by 10;
+`drv_ms_cus_sensor.h` differs too. Only `sensor_gc4653_mipi.c` is identical.
+`drv_sensor.h` happens to match between these two, so it is not what the split
+rests on -- the drivers are. The family also selects which drivers exist at all:
+11 for infinity6e, 18 for infinity6b0.
 
-The family also selects which drivers exist at all: 11 for infinity6e, 18 for
-infinity6b0.
+Only families a thingino target can select are carried. `sigmastar-sdk.mk`
+builds `$(SOC_FAMILY)/sensor-src`, and `soc/sigmastar/*.mk` defines exactly
+infinity6e and infinity6b0. Upstream also ships infinity6 and infinity6c;
+restore either from the hash above if a target appears -- infinity6c symlinks
+two of its drivers across to infinity6e, so it must come back with that link
+intact.
 
-## sensor-iq/<family>/
+## Case
 
-Per-sensor API bins -- IQ Tool "save Bin" output, loaded by the application via
-MI_ISP_API_CmdLoadBinFile with user_key 1234. Distinct in both format and
-purpose from iqfile/ below; the two are not interchangeable. Naming follows
-ingenic-sdk/sensor-iq/<family>/.
-
-## iqfile/
-
-The CUS3A iqfile and its schema. Read from disk by CUS3A itself at AE init, from
-whatever MI_ISP_GetIspRoot reports. Vendor location: project/board/i6e/iqfile/.
-
-## venc_fw/<family>/
-
-chagall.bin is **VENC firmware**, not ISP and not sensor, despite having lived
-under sensor/firmware/ previously. Vendor location: project/board/i6e/venc_fw/,
-authoritative copy sdk/mhal/chip_common/venc/hal/i6e/chagall.bin. Per chip --
-the vendor ships a separate i6b0 copy.
-
-## Files
-
-    --- kmod ---
-    5b81b67d1112b964c2d63bc9192d26c5  mhal.ko
-    23399166398b6dd0c2fdf083adb5b781  mi_ai.ko
-    1a34d8ed022c35d38b55ff242b247e41  mi_ao.ko
-    1aac0ff76a862410b406b104ca679721  mi_common.ko
-    bcb0e1770d8517e3d973776e59544f60  mi_divp.ko
-    29078636d9157993baa139a44c468e08  mi_ldc.ko
-    e8388447a58978c25bc662326124b4e7  mi_mipitx.ko
-    569f346bf46f5917f5759caa1404cf54  mi_rgn.ko
-    5f4ff38c2ea5cda76b38db4d7d3fc976  mi_sensor.ko
-    41e940b37f1fc3521e81f31028c626b9  mi_shadow.ko
-    f800b515229c111ffbd537be4c4488ca  mi_sys.ko
-    05e631dcf6e3c5d505086dc26da153dc  mi_venc.ko
-    7bc5d9ae7ac136d13d9fd56735a8fed3  mi_vif.ko
-    777024a0aa32d85f9a4e7dda3ef7836c  mi_vpe.ko
-    --- sensor-iq/infinity6e ---
-    c12857f2065ff5de50947eb9c7d61b13  gc2053.bin
-    78369486c57a6d5eee03c4720e95f4aa  gc4653.bin
-    ea9cfcc99a2a8109376f81256407c527  imx307.bin
-    ace4bd06c576682384842e2b620e7c0b  imx335.bin
-    462193eea6de60b4754ffb1f571ed0ce  imx415.bin
-    dfe45f927c68fea70b85100448283411  sc501ai.bin
-    --- iqfile ---
-    d44143b021f34cf8c5cfb11698961eea  iqfile0.bin
-    404349e49293d7866569cbf086edbb63  isp_api.xml
-    --- venc_fw/infinity6e ---
-    6f109f34e089f466e41c6f7f5df7aa4e  chagall.bin
+Lowercase, matching `SOC_FAMILY` in `soc/sigmastar/*.mk` literally, so the
+packages index this tree with `$(SOC_FAMILY)` and no case conversion.
+johnchia/sigmastar-lib uses the same spelling for the same reason.

@@ -1,0 +1,44 @@
+# PROVENANCE — infinity6b0
+
+SigmaStar Infinity6B0, the SSC333 line. Kernel 4.9.84, same as Infinity6E --
+confirmed from the built tree (`include/config/kernel.release`) for
+johnchia/linux @ 289323e3301024554bb49652cd92960df459fe14, not assumed from the
+4.9 branch name.
+
+## sensor-src/
+
+18 drivers, seven more than infinity6e. See the top-level PROVENANCE -- source,
+upstream hash and the reason for the per-family split are shared.
+
+## Not here yet
+
+This family is **incomplete**. A build gets as far as compiling these drivers
+and then fails on missing payload:
+
+    kmod-4.9.84-<drop>-<libc>-<gcc>/   prebuilt MI modules
+    venc_fw/chagall.bin
+    iqfile/
+    sensor-iq/
+
+and separately on `infinity6b0/` in johnchia/sigmastar-lib.
+
+Nothing has been substituted from infinity6e to paper over this, deliberately.
+The MI modules are built for one chip, and before this tree was keyed by family
+the kmod directory sat outside any family -- so an Infinity6B0 build resolved
+Infinity6E's modules and would have insmod'd them. Failing on an absent path is
+the correct behaviour and the layout now guarantees it.
+
+Two of the four are known to be substitutable and can be filled from a vendor
+tree when one is at hand -- in ~/sigmastar/ssc336q, `venc/hal/i6b0/chagall.bin`
+is byte-identical to i6e's (17741e8b), and the infinity6b0 ispalgo iqfile tree
+is byte-identical to infinity6e's. Note that the i6e `chagall.bin` this
+repository ships is *not* that vendor file (see infinity6e/PROVENANCE), so
+filling i6b0 from the vendor tree would mean the two families carry different
+bytes for a file the vendor makes identical.
+
+`kmod` has no such shortcut: it must come from an Infinity6B0 vendor build, and
+its drop must match whatever johnchia/sigmastar-lib carries for this family.
+Record both in `soc/sigmastar/infinity6b0.mk` as SIGMASTAR_DROP/LIBC/GCC/KREL,
+which is the single definition both packages read.
+
+No source is available for the prebuilt artifacts and none is claimed here.

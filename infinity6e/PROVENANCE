@@ -1,0 +1,132 @@
+# PROVENANCE — infinity6e
+
+SigmaStar Infinity6E, the SSC30KQ line. Kernel-side payload. Userspace is
+johnchia/sigmastar-lib under the same family name.
+
+Everything prebuilt here was harvested from a shipped camera firmware via
+OpenIPC's `sigmastar-osdrv-infinity6e`, **not** taken from a vendor SDK release.
+That is now checked rather than assumed -- see "Where these actually came from".
+
+## kmod-4.9.84-0607-glibc-9.1.0/
+
+Prebuilt vendor MI kernel modules, from the same build as the userspace
+libraries in johnchia/sigmastar-lib:
+
+    release_0607   built 2022-06-07 09:51-09:52
+    project_commit ceb04c4
+    sdk_commit     dc99390
+    toolchain      GCC 9.1.0, glibc
+    vermagic       4.9.84 SMP preempt mod_unload ARMv7 thumb2 p2v8
+
+**The whole flavour is in the directory name because nothing at load time will
+catch a mismatch.** The vendor ships these under `<libc>/<gcc>` trees that are
+not one source built several ways: across release_0601's own trees, mi_sys.ko
+differs by 27-29 imported kernel symbols, differs in `depends=` (mi_common under
+glibc/9.1.0, empty under the others), and the module sets differ -- mi_ai.ko,
+mi_ao.ko and gc4653_MIPI.ko exist only under glibc/9.1.0. vermagic is byte
+identical across all of them and CONFIG_MODVERSIONS is off, so insmod accepts a
+foreign module and it fails later at symbol resolution, or misbehaves.
+
+The kernel release leads the name because it is the one component `uname -r`
+must agree with, and because it is what makes a wrong-kernel family visible as a
+directory rather than as a runtime fault.
+
+The kernel and userspace halves are two parts of one vendor build and must move
+together. `soc/sigmastar/infinity6e.mk` holds that drop in one place --
+SIGMASTAR_DROP/LIBC/GCC/KREL -- which both packages read, so the two repository
+pins cannot drift apart silently.
+
+Do not mix these with modules from another flavour directory.
+
+Previously johnchia/sigmastar-sdk @ cdfe9e3e8421dc6929d1e55dce22ab54e7556fd4,
+under infinity6e/kmod/; then 4.9.84/kmod-0607-glibc-9.1.0/.
+
+## sensor-src/
+
+11 drivers. See the top-level PROVENANCE -- source, upstream hash and the reason
+for the per-family split are shared with infinity6b0.
+
+## sensor-iq/
+
+Per-sensor API bins -- IQ Tool "save Bin" output, loaded by the application via
+MI_ISP_API_CmdLoadBinFile with user_key 1234. Distinct in both format and
+purpose from `iqfile/` below; the two are not interchangeable. Naming follows
+ingenic-sdk/sensor-iq/<family>/.
+
+## iqfile/
+
+The CUS3A iqfile and its schema. Read from disk by CUS3A itself at AE init, from
+whatever MI_ISP_GetIspRoot reports -- /etc/firmware on this board.
+
+Per family, not shared, even though the bytes happen to be identical between
+Infinity6E and Infinity6B0: the vendor keeps these per chip
+(`project/board/<chip>/iqfile/`, `ispalgo/hal/<family>/inc/iqfile/`) and the i6c
+copies differ. The equality across our two families is a fact about these two
+chips, not a property of the file, so the path does not claim otherwise.
+
+`iqfile0.bin` is not a chip-generic file. It is the **IMX415 tuning**, renamed:
+byte-identical to `imx415_iqfile.bin` in four vendor locations, including both
+the infinity6e and infinity6b0 ispalgo trees. It serves as the CUS3A bootstrap
+default; the per-sensor tuning the board actually runs on arrives separately
+from `sensor-iq/` via the application. Worth knowing before treating it as a
+generic default.
+
+## venc_fw/
+
+`chagall.bin` is **VENC firmware**, not ISP and not sensor, despite having lived
+under sensor/firmware/ previously. Vendor location:
+`project/board/i6e/venc_fw/`, authoritative copy
+`sdk/mhal/chip_common/venc/hal/i6e/chagall.bin`.
+
+Per family for the same reason as `iqfile/`: the vendor ships a separate i6b0
+copy, and although that copy is byte-identical to i6e's, the i6c ones are not
+and differ per release.
+
+## Where these actually came from
+
+Checked against every SigmaStar SDK tree available locally (ssc30kq
+release_0601, ssc336q, ssc377 releases 0602/0712/0907) rather than assumed:
+
+    iqfile0.bin   d44143b0  = imx415_iqfile.bin, present in 4 vendor locations
+    isp_api.xml   404349e4  matches no vendor copy; the five local ones are
+                            4981dbbd 0601/i6e, bb04546f ssc336q/i6e,
+                            32e7a63d 0907/i6c, e9c3220a 0602/i6c, 1bd3f6d5 0712/i6c
+    chagall.bin   6f109f34  matches no vendor copy; every local vendor i6e and
+                            i6b0 copy is 17741e8b
+
+So `isp_api.xml` and `chagall.bin` are from the OpenIPC firmware harvest, the
+same origin as the modules, and are *not* the vendor SDK's files despite the
+vendor paths named above. Those paths say where the vendor keeps its equivalent,
+which is useful for replacing them, and are not a claim about these bytes.
+
+No source is available for the prebuilt artifacts and none is claimed here.
+
+## Files
+
+    --- kmod-4.9.84-0607-glibc-9.1.0 ---
+    5b81b67d1112b964c2d63bc9192d26c5  mhal.ko
+    23399166398b6dd0c2fdf083adb5b781  mi_ai.ko
+    1a34d8ed022c35d38b55ff242b247e41  mi_ao.ko
+    1aac0ff76a862410b406b104ca679721  mi_common.ko
+    bcb0e1770d8517e3d973776e59544f60  mi_divp.ko
+    29078636d9157993baa139a44c468e08  mi_ldc.ko
+    e8388447a58978c25bc662326124b4e7  mi_mipitx.ko
+    569f346bf46f5917f5759caa1404cf54  mi_rgn.ko
+    5f4ff38c2ea5cda76b38db4d7d3fc976  mi_sensor.ko
+    41e940b37f1fc3521e81f31028c626b9  mi_shadow.ko
+    f800b515229c111ffbd537be4c4488ca  mi_sys.ko
+    05e631dcf6e3c5d505086dc26da153dc  mi_venc.ko
+    7bc5d9ae7ac136d13d9fd56735a8fed3  mi_vif.ko
+    777024a0aa32d85f9a4e7dda3ef7836c  mi_vpe.ko
+    --- sensor-iq ---
+    c12857f2065ff5de50947eb9c7d61b13  gc2053.bin
+    78369486c57a6d5eee03c4720e95f4aa  gc4653.bin
+    ea9cfcc99a2a8109376f81256407c527  imx307.bin
+    ace4bd06c576682384842e2b620e7c0b  imx335.bin
+    462193eea6de60b4754ffb1f571ed0ce  imx415.bin
+    dfe45f927c68fea70b85100448283411  sc501ai.bin
+    --- iqfile ---
+    d44143b021f34cf8c5cfb11698961eea  iqfile0.bin
+    404349e49293d7866569cbf086edbb63  isp_api.xml
+    --- venc_fw ---
+    6f109f34e089f466e41c6f7f5df7aa4e  chagall.bin
