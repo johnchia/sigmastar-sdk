@@ -33,19 +33,29 @@ sigmastar-lib's infinity6c/PROVENANCE; the same reasoning selects it here.
 
 ## Both C library variants are carried
 
-They are not one source built two ways. glibc ships three modules uclibc does
-not:
+glibc ships three modules uclibc does not:
 
     mi_jpd.ko  mi_vdec.ko  mi_vdisp.ko
 
     uclibc  9.1.0   19 modules
     glibc  11.1.0   22 modules
 
-and mi_sys.ko differs between them. This mirrors the userspace split in
-sigmastar-lib, where glibc likewise carries two libraries uclibc lacks. The C
-library component of the path selects content, not merely codegen, so a build
-that picks the wrong one is missing modules rather than getting differently
-compiled ones.
+Both are kept because the vendor builds them separately and the md5s differ, so
+the path records which tree a module came from. **The difference is far smaller
+than the userspace one, and the libc name is close to a misnomer here** --
+kernel modules do not link a C library. Measured:
+
+    mi_sys.ko   exports 176 vs 176, identical; imports 235 vs 235, identical
+    mi_isp.ko   differs by exactly one import, memmove
+    the three glibc-only modules export 0 symbols each
+
+So a build that picks the "wrong" variant is not missing an API -- it gets the
+same modules from a different vendor build tree, plus or minus three leaf
+modules (JPEG decode, video decode, video display) that nothing on a camera
+loads. Contrast sigmastar-lib, where the split is real: glibc there carries
+libmi_divp and libsigma3a that uclibc genuinely lacks.
+
+If space ever matters more than provenance, one variant would do.
 
 `soc/sigmastar/infinity6c.mk` will have to name which variant a port uses, via
 SIGMASTAR_LIBC and SIGMASTAR_GCC, and it must be the same choice sigmastar-lib
