@@ -115,15 +115,48 @@ default.
 
 ## sensor-iq/
 
-Per-sensor API bins, from the vendor's `iqfile/<sensor>/<SENSOR>_MIPI_api.bin`,
-renamed to the lowercase driver name that raptor resolves tuning by. The vendor
-ships these for two sensors only, both genuinely distinct:
+Per-sensor API bins, renamed to the lowercase driver name that raptor resolves
+tuning by.
+
+From the vendor's `iqfile/<sensor>/<SENSOR>_MIPI_api.bin`. release_0907 ships
+these for two sensors only, both genuinely distinct:
 
     sc430ai.bin   56737fd6
     imx307.bin    c6bf43fd
 
 An HDR variant, `SC430AI_MIPI_HDR_api.bin`, exists in the vendor tree and is not
 carried -- nothing selects it, and the runtime resolves by driver name alone.
+
+**Not** from the vendor:
+
+    imx335.bin    02a48d0a
+
+release_0907 has no imx335 tuning -- `board/i6c/iqfile/` holds imx307 and
+sc430ai and nothing else -- but `sensor-src/sensor_imx335_mipi.c` is present and
+builds, so the driver exists with no blob to pair it with. This copy is
+OpenIPC's, from openipc/firmware
+`general/package/sigmastar-osdrv-infinity6c/files/sensor/configs/imx335.bin`,
+read at e609afae (file last touched 2026-07-17), sha256
+
+    d1139a2ee4f24a7cf1f488fb5450eeb2321102aaab27be10460001d2d2610e0a
+
+It is the right format for this family rather than an i6e file copied across,
+and that is checkable in the header rather than assumed. These bins open with a
+family/format tag before the `em` magic:
+
+    27 03 65 6d 02 00 ...   infinity6c   imx335(openipc), sc401ai(openipc),
+                                         imx307(vendor), sc430ai(vendor)
+    21 03 65 6d 08 00 ...   infinity6e   imx335
+
+Bytes 8..11 are the payload length, which is the file size less the 32-byte
+header in every case checked. OpenIPC's i6c imx335 carries the i6c tag and the
+i6c variant byte, matching the two vendor bins beside it.
+
+What that check does not establish is which SDK drop tuned it, or on what
+module. OpenIPC's i6c osdrv is known to mix vintages -- a June-2024 `mi.ko`
+against release_0907 libraries on a Nov-2023 BSP -- so treat the tuning as
+plausible and untested rather than matched. Colour on real silicon has not been
+looked at by anyone here.
 
 ## venc_fw/
 
@@ -242,3 +275,4 @@ No source is available for the prebuilt artifacts and none is claimed here.
     4dac014257206af8cc76fc3ddcc58b5b  iqfile/iqfile0.bin
     56737fd643c62eedc321a59b3f0436e0  sensor-iq/sc430ai.bin
     c6bf43fd65598621fa5d8c1627bbde35  sensor-iq/imx307.bin
+    02a48d0a22f485e608778dc8619e75b2  sensor-iq/imx335.bin      (OpenIPC, not vendor)
