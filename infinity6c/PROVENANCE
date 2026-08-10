@@ -186,6 +186,40 @@ So the pairing is plausible rather than verified. What is not established is
 struct layout across all 118 differing files, and nothing here has been run on
 hardware. Confirm on a board before trusting it, and record the result.
 
+### If it does not work on hardware
+
+Cutting a BSP from this SDK's own kernel source is the obvious reflex and the
+most expensive option. Measured against vanilla 5.10.61:
+
+    vanilla -> b335d21 (OpenIPC's BSP)   1694 modified  2043 added (27M)  2586 removed
+    vanilla -> release_0907 kernel       1673 modified  2830 added (40M)  2623 removed
+
+The same kind of job OpenIPC already did, about half again as large, and it also
+means rebasing the seven commits that sit on top of b335d21 -- lzma uImage,
+spinand probe-on-type, mtdparts identifier, watchdog magic close, python3
+scripts, i2c warnings, regulatory defaults -- all of which are wanted. It does
+not fully remove the risk either: a kernel built from vendor sources has never
+been run with thingino's config.
+
+So try, in this order:
+
+  1. **b335d21 with these modules.** Free, and the only thing that settles the
+     question. If the MI stack initialises, stop here.
+  2. **OpenIPC's mi.ko on the same kernel.** One file, and it is the pairing
+     they ship, so it separates "these modules are wrong" from "this BSP is
+     wrong". Note it exports one symbol against the vendor set's 833, so it
+     cannot be partially loaded -- an all-or-nothing diagnostic, not a
+     destination.
+  3. **The drop b335d21 was cut from.** Viktor's patch is dated November 2023
+     and matches none of the three 2022 releases; their mi.ko is from a June
+     2024 drop. Obtaining either gives a genuinely matched pair *and* keeps
+     OpenIPC's kernel work. This is the only option with no downside, and it
+     costs a download rather than a port.
+  4. **Cut a BSP from release_0907.** Only if the first three fail. Guarantees
+     the match at the cost above.
+
+Record which of these the port ended up on, and why.
+
 ## Not consumed yet
 
 No thingino target builds Infinity6C -- there is no `soc/sigmastar/infinity6c.mk`
