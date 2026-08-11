@@ -94,12 +94,42 @@ above against the vendor path named earlier:
 
 ## sensor-src/
 
-10 drivers: 8 carried here, plus imx335 and imx415 symlinked across to
-infinity6e, which is how upstream ships them. Source, compiled at build time.
-Origin and the reason for the per-family split are in the top-level PROVENANCE.
+8 drivers and `include/`, all from release_0907, the same drop as the MI modules
+above. Source, compiled at build time. Taken verbatim from
 
-These were removed in 4b08ea4 as an unreachable family and restored here from
-cca10f4 when the family gained payload.
+    ssc377/release_0907/sourcecode/sdk/driver/SensorDriver/
+      drv/src/drv_ms_cus_<sensor>_MIPI.c   -> sensor_<sensor>_mipi.c
+      drv/pub/{drv_ms_cus_sensor.h,sensor_i2c_api.h}
+      drv/inc/{drv_sensor.h,drv_sensor_common.h,drv_sensor_init_table.h}
+
+renamed to the module names load_sigmastar and raptor resolve by.
+
+**These must come from the same drop as the MI modules, and the reason is not
+obvious.** `ms_cus_sensor` is the handle the sensor driver fills and mi_sensor
+reads, and its layout is not stable across releases: the header this tree
+carried before had `app_spi_cfg spi_cfg` and `spi_handle_t *spi_bus` between
+`i2c_bus` and `sensor_if_api`, which release_0907 does not. Two fields is enough
+to move every callback after them. Built against the wrong header a driver still
+compiles, still insmods -- vermagic only names the kernel -- and still prints
+`Connect ... to sensor pad 0`, while mi_sensor reads its resolution count from
+the neighbouring slot and gets a plausible zero. Verified by comparing all 42
+`ms_cus_sensor` field offsets in the built module against the vendor's own
+`imx335_MIPI.ko` from `project/release/chip/i6c/.../modules/5.10/`; they are
+identical.
+
+imx335 and imx415 were previously symlinks to infinity6e's copies, which is how
+upstream ships them. They are real files here now because infinity6e is a
+different drop for a different kernel, and sharing the source across the two
+families is exactly what put the wrong struct in front of the 0907 modules.
+
+sc4336p and sc501ai are dropped: release_0907 has no driver for either, and the
+copies carried here came from a release whose headers the rest of this tree can
+no longer be built against. No SigmaStar target selects them -- every sc4336p
+config in thingino is Ingenic -- and against these MI modules they could not
+have worked regardless.
+
+Restored from cca10f4 when the family gained payload, having been removed in
+4b08ea4 as an unreachable family.
 
 ## iqfile/
 

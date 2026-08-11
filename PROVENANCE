@@ -65,16 +65,18 @@ rests on -- the drivers are. It does differ for infinity6c, by 15 lines, and
 that family alone carries `sensor_spi_api.h`.
 
 The family also selects which drivers exist at all: 11 for infinity6e, 18 for
-infinity6b0, 10 for infinity6c. Where a driver genuinely is shared, upstream
-symlinks rather than copies -- infinity6c takes imx335 and imx415 from
-infinity6e that way, and those links are preserved here.
+infinity6b0, 8 for infinity6c. Where a driver genuinely is shared, upstream
+symlinks rather than copies -- infinity6c took imx335 and imx415 from infinity6e
+that way, and those links were preserved here until they were found to be
+unsound: see infinity6c/PROVENANCE. A sensor driver is only shareable between
+families that ship the same `ms_cus_sensor` layout, which infinity6e and
+infinity6c do not, so each family's sensor-src must come from that family's own
+drop.
 
 `sigmastar-sdk.mk` builds `$(SOC_FAMILY)/sensor-src`, and `soc/sigmastar/*.mk`
 defines infinity6e and infinity6b0. infinity6c is carried without a target, for
 a port that the Raptor i6c backend needs the userspace half of; its drivers were
 removed in 4b08ea4 while the family had no payload and restored once it did.
-infinity6c symlinks imx335 and imx415 across to infinity6e, so the two families
-cannot be separated.
 
 Upstream also ships infinity6, which nothing here needs; restore it from the
 hash above if a target appears.
