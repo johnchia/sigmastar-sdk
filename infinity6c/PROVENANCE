@@ -1,10 +1,182 @@
 # PROVENANCE — infinity6c
 
-SigmaStar Infinity6C (vendor CHIP = i6c), the SSC377 line. Kernel-side payload.
-Userspace is johnchia/sigmastar-lib under the same family name and the same drop.
+SigmaStar Infinity6C (vendor CHIP = i6c), the SSC377 line. Kernel-side payload
+and the runtime blobs the ISP and encoder read. Userspace is
+johnchia/sigmastar-lib under the same family name and the same drop.
 
 Kernel 5.10.61, not the 4.9.84 the other two families run. That is why this tree
 is keyed by family rather than by kernel release -- see the top-level PROVENANCE.
+
+Two drops are carried:
+
+    kmod-5.10.61-0907-glibc-11.1.0/    22 modules
+    kmod-5.10.61-0907-uclibc-9.1.0/    19 modules
+    kmod-5.10.61-1230-uclibc-9.1.0/     1 module + 2 sensor drivers
+
+    venc_fw/{0907,1230}/    iqfile/{0907,1230}/    sensor-iq/{0907,1230}/
+
+`soc/sigmastar/infinity6c.mk` names the drop, C library and GCC version, and
+sigmastar-lib must be indexed with the same three.
+
+---
+
+# 1230 — 2024-12-30, uclibc 9.1.0
+
+The drop the port runs on, and the only one proven on hardware.
+
+## Release
+
+    build_time     20241230152522 .. 152540   (modules)
+    project_commit 8e24a5b
+    sdk_commit     9e4d64f
+    mhal_commit    da23dd9
+    vermagic       5.10.61 preempt mod_unload ARMv7 thumb2 p2v8
+
+Same vermagic as 0907, so insmod accepts either against this kernel and nothing
+at load time catches a mismatched pair. The flavour is spelled out in the
+directory name for that reason.
+
+## Origin
+
+Harvested from the camera's own shipped firmware -- a no-name SSC377QE with an
+imx335 -- from `/config/modules/5.10/` on its second rootfs. Weaker provenance
+than 0907 beside it, which came from the vendor release tree.
+
+The userspace half is the `/config/lib` set in the same image, carried in
+sigmastar-lib as `1230`. Both carry the triple above. Do not pair by the
+vendor's own `script/demo.sh`, which puts a *different*, 2024-06 set on
+LD_LIBRARY_PATH; see sigmastar-lib's PROVENANCE.
+
+## One module, not nineteen
+
+This drop ships the whole MI stack as a single `mi.ko`. 0907 ships 19 separate
+`mi_*.ko` with a load order that matters.
+
+    0907   19 modules   3746420 bytes   832 exported symbols
+    1230    1 module    2522576 bytes   566 exported symbols
+
+The smaller export count is not lost API. 301 of 0907's exports are absent
+because they were only ever cross-module plumbing -- `MI_COMMON_AddResource`,
+`MI_DEVICE_GetClass` and so on -- which a single object has no reason to export;
+35 are new. The MI API userspace calls lives in the `.so` files, not here.
+
+`depends=` is empty and there is no `mhal.ko`: everything the stack needs from
+the vendor BSP is either inside this object or already built into the kernel.
+
+It carries no `.debug_*` at all -- stripped by the vendor's own image build,
+not by this repository. That is why the newer drop is the smaller one.
+
+## Loading it
+
+    insmod mi.ko g_ModParamPath=<modparam.json> \
+                 drv_codec40_common.fw_load_path=<chagall.bin>
+    insmod sensor_<sensor>_mipi.ko chmap=1
+
+`g_ModParamPath` is registered bare; the VENC firmware parameter carries the
+vendor's per-object prefix, as it does in 0907's separate `mi_vcodec.ko`. Both
+have compiled-in `/config/...` defaults that thingino does not populate.
+
+## Its sensor drivers are prebuilt, and must be
+
+**This is the one drop whose sensors are not built from `sensor-src/`.**
+
+`ms_cus_sensor` gained fields between release_0907 and this drop. Measured by
+comparing the store offsets in our release_0907-built `sensor_imx335_mipi.ko`
+against this image's own `imx335_MIPI.ko` -- both have exactly 115 distinct
+offsets, so it is the same driver with a shifted struct rather than different
+code:
+
+    ours 2384  ->  oem 2392    +8
+    ours 2496  ->  oem 2504    +8
+    ours 2512  ->  oem 2524   +12
+    ours 2620  ->  oem 2624    +4     pCus_sensor_GetVideoResNum
+
+That last one is the same trap fe5d953 documents for the previous header: nothing
+fails at load time, `Connect ... to sensor pad 0` still prints, and `mi_sensor`
+reads its resolution count from the neighbouring slot and gets a plausible zero.
+rvd then reports "sensor reports no modes" and no error is logged anywhere.
+
+So the two drivers from the image are carried beside `mi.ko`, renamed to the
+names `load_sigmastar` and raptor resolve by:
+
+    imx335_MIPI.ko  ->  sensor_imx335_mipi.ko
+    imx307_MIPI.ko  ->  sensor_imx307_mipi.ko
+
+`soc/sigmastar/infinity6c.mk` sets `SIGMASTAR_SENSOR := prebuilt` for this drop,
+which is what stops `sigmastar-sdk.mk` building `sensor-src/` and overwriting
+them.
+
+**Only these two sensors work on this drop.** The vendor release tree that would
+carry the rest is not available for it, and the headers to rebuild the others
+are not either. A board with any other sensor must use 0907 until that changes.
+
+## Hardware
+
+Proven on the SSC377QE above: 1080p H.264 at 25fps, single stream, no shims.
+VIF DropCnt 0, ISP 25.00fps, SCL port0 FailCnt 0, VENC chn0 Fps_1s 25.00.
+
+A second encoder channel still fails to bind, `MI_SYS_BindChnPort2` returning
+`0xA0092008` for SCL port 1 -> VENC chn 1. That happens identically on 0907, so
+it is not a property of either drop.
+
+---
+
+# The runtime blobs are keyed by drop
+
+`venc_fw/`, `iqfile/` and `sensor-iq/` used to sit at family level. They cannot:
+all three are validated against the drop that reads them, and two of the three
+fail loudly.
+
+## venc_fw/ — the encoder rejects a foreign firmware
+
+    0907   chagall.bin   249024 bytes   dfa6a803efce1a92f0386672f2dacdc4
+    1230   chagall.bin   259904 bytes   68bd2cafe89c641ad027ddbb1bbe48cc
+
+`mi.ko` checks it and says so:
+
+    [ven-e][%s] fw ver:%llx mismatch driver:%llx, pls check fwVPU_if.h and
+    chagall.bin/chagall.h in folder mhal/chip_commom/vcodec/hal/xxx/
+
+## sensor-iq/ — the ISP rejects a foreign tuning
+
+Per-sensor ISP API bins, magic `27 03 65 6d`, with a major version at offset 4
+that the SDK checks:
+
+    [MAJOR]: ispversion(%d) in sdk, ispversion(%d) in binfile.
+    ooooops,SDK & iqbinfile major version is not match.
+
+    0907   imx307 / imx335 / sc430ai    major 2
+    1230   imx335                       major 5
+
+A major-2 bin handed to the 2024-12 stack is rejected, and the ISP falls back to
+generic tuning with visibly wrong colour rather than failing outright -- the
+quiet failure of the three, which is why the version is recorded here.
+
+1230's imx335 bin is this camera's own, from `/config/iqfile/imx335_iqfile.bin`
+in the same image as the modules, so tuning and stack are matched for the first
+time on this family. Contrast 0907's imx335 bin, which is OpenIPC's and matched
+to nothing in particular (see below).
+
+infinity6e's bins are magic `21 03 65 6d`, major 8 -- a different chip and a
+different generation, which is why this key is per family as well as per drop.
+
+## iqfile/ — CUS3A's default, paired with its own libcus3a
+
+`iqfile0.bin` is a different format from the sensor-iq bins (no `27 03 65 6d`
+magic) and carries no version field to check. It is keyed by drop on the same
+grounds as the other two rather than on measured evidence: it is read at runtime
+by that drop's own `libcus3a.so`.
+
+    0907   iqfile0.bin   54175 bytes   the vendor's default
+    1230   iqfile0.bin   54175 bytes   this camera's imx307 default
+
+`isp_api.xml` sits beside it and differs between drops (194077 vs 209514 bytes).
+Nothing reads it at runtime; it describes the ISP API to the vendor's tuning
+tools.
+
+---
+
+# 0907 — 2022-09-07, glibc 11.1.0 and uclibc 9.1.0
 
 ## Release
 
@@ -15,15 +187,15 @@ is keyed by family rather than by kernel release -- see the top-level PROVENANCE
     vermagic       5.10.61 preempt mod_unload ARMv7 thumb2 p2v8
 
 Taken from the vendor SDK release tree, not harvested from a shipped firmware
-and not taken from OpenIPC. Stronger provenance than the infinity6e entry, which
-was reconstructed from a camera image.
+and not taken from OpenIPC. Stronger provenance than the 1230 entry above and
+than the infinity6e entry beside it.
 
     ssc377/release_0907/sourcecode/project/release/chip/i6c/ipc/common/
       uclibc/9.1.0/modules/5.10/
       glibc/11.1.0/modules/5.10/
 
-Same drop as johnchia/sigmastar-lib's infinity6c libraries, and the build stamps
-agree to the minute -- kernel and userspace halves of one build:
+Same drop as johnchia/sigmastar-lib's infinity6c 0907 libraries, and the build
+stamps agree to the minute -- kernel and userspace halves of one build:
 
     uclibc  9.1.0   modules build_time.20220907111124   libs 20220907111141
     glibc  11.1.0   modules build_time.20220907112106   libs 20220907112126
@@ -55,20 +227,15 @@ modules (JPEG decode, video decode, video display) that nothing on a camera
 loads. Contrast sigmastar-lib, where the split is real: glibc there carries
 libmi_divp and libsigma3a that uclibc genuinely lacks.
 
-If space ever matters more than provenance, one variant would do.
-
-`soc/sigmastar/infinity6c.mk` will have to name which variant a port uses, via
-SIGMASTAR_LIBC and SIGMASTAR_GCC, and it must be the same choice sigmastar-lib
-is indexed with.
-
 ## MI modules only
 
 The vendor's `modules/5.10` holds 143 (uclibc) / 146 (glibc) modules, of which
-120-odd are prebuilt sensor drivers. Those are not carried: sensors are built
-from `sensor-src/` here as they are for every other family, which is what keeps
-them independent of the vendor's kernel build.
+120-odd are prebuilt sensor drivers. Those are not carried: on this drop sensors
+are built from `sensor-src/` as they are for every other family, which is what
+keeps them independent of the vendor's kernel build. 1230 above is the exception
+and says why.
 
-## Stripped of debug info
+## Stripped of debug info by this repository
 
 The vendor ships these unstripped -- 14 `.debug*` sections each, 59M (uclibc)
 and 37M (glibc) for the MI modules alone. They are carried stripped:
@@ -81,9 +248,7 @@ and 37M (glibc) for the MI modules alone. They are carried stripped:
 Checked rather than assumed, on mi_sys.ko: the exported symbol set is identical
 (176 `__ksymtab_*` entries before and after), the imported symbol count is
 unchanged at 236, and `vermagic`, `depends=mi_common` and the Sigmastar build
-stamp all survive. Only `.debug*` sections are gone. The infinity6e modules
-beside this carry no debug sections either, having been through a firmware
-image, so this also makes the two families consistent.
+stamp all survive. Only `.debug*` sections are gone.
 
 This is the one place the repository modifies vendor bytes, so the md5s below
 are of the stripped files. The originals are recoverable by re-running the strip
@@ -92,10 +257,35 @@ above against the vendor path named earlier:
     mi_sys.ko  uclibc   vendor c9e29a1f...  here 2ff20927...
     mi_sys.ko  glibc    vendor 91515d8c...  here 6de03cec...
 
-## sensor-src/
+## 0907's sensor-iq/imx335.bin is not the vendor's
 
-8 drivers and `include/`, all from release_0907, the same drop as the MI modules
-above. Source, compiled at build time. Taken verbatim from
+release_0907 has no imx335 tuning -- `board/i6c/iqfile/` holds imx307 and
+sc430ai and nothing else -- but `sensor-src/sensor_imx335_mipi.c` is present and
+builds, so the driver exists with no blob to pair it with. That copy is
+OpenIPC's, from openipc/firmware
+`general/package/sigmastar-osdrv-infinity6c/files/sensor/configs/imx335.bin`,
+read at e609afae (file last touched 2026-07-17), sha256
+
+    d1139a2ee4f24a7cf1f488fb5450eeb2321102aaab27be10460001d2d2610e0a
+
+    56737fd643c62eedc321a59b3f0436e0  sensor-iq/0907/sc430ai.bin   (vendor)
+    c6bf43fd65598621fa5d8c1627bbde35  sensor-iq/0907/imx307.bin    (vendor)
+    02a48d0a22f485e608778dc8619e75b2  sensor-iq/0907/imx335.bin    (OpenIPC)
+
+It carries the i6c family tag and the i6c variant byte, matching the two vendor
+bins beside it, so it is the right format for this family rather than an i6e file
+copied across. What that does not establish is which SDK drop tuned it. OpenIPC's
+i6c osdrv is known to mix vintages -- a June-2024 `mi.ko` against release_0907
+libraries on a Nov-2023 BSP -- so treat it as plausible and untested. Prefer 1230,
+whose imx335 tuning came out of the same image as its modules.
+
+---
+
+# sensor-src/
+
+8 drivers and `include/`, all from release_0907, the same drop as that set of MI
+modules. Source, compiled at build time. **Used by drop 0907 only** -- 1230
+ships its own prebuilt drivers and says why above. Taken verbatim from
 
     ssc377/release_0907/sourcecode/sdk/driver/SensorDriver/
       drv/src/drv_ms_cus_<sensor>_MIPI.c   -> sensor_<sensor>_mipi.c
@@ -117,6 +307,9 @@ the neighbouring slot and gets a plausible zero. Verified by comparing all 42
 `imx335_MIPI.ko` from `project/release/chip/i6c/.../modules/5.10/`; they are
 identical.
 
+The same measurement against 1230's driver is what showed that drop needs its
+own, so the rule has now caught two releases rather than one.
+
 imx335 and imx415 were previously symlinks to infinity6e's copies, which is how
 upstream ships them. They are real files here now because infinity6e is a
 different drop for a different kernel, and sharing the source across the two
@@ -131,97 +324,18 @@ have worked regardless.
 Restored from cca10f4 when the family gained payload, having been removed in
 4b08ea4 as an unreachable family.
 
-## iqfile/
+---
 
-`isp_api.xml` is the vendor's own, unlike infinity6e's, which matches no vendor
-copy.
+# The kernel pairing, now settled on hardware
 
-`iqfile0.bin` is the vendor's default CUS3A iqfile. The vendor ships it under
-two sensor names -- `iqfile/sc430ai/sc430ai_iqfile.bin` and
-`iqfile/imx307/imx307_iqfile.bin` -- and the two are **byte-identical**, so it
-is one file here under the name CUS3A reads. Note this is unlike infinity6e,
-where `iqfile0.bin` really is one sensor's tuning (imx415's) standing in as a
-default.
+johnchia/linux `sigmastar-infinity6c` at d17f67f is what the port runs. Its BSP
+import, b335d21 "0000-infinity6c-kernel-5.10.61.patch", is authored by OpenIPC's
+Viktor in November 2023 and sits directly on vanilla Linux 5.10.61 (230ca533).
+It is not built from either drop carried here.
 
-## sensor-iq/
-
-Per-sensor API bins, renamed to the lowercase driver name that raptor resolves
-tuning by.
-
-From the vendor's `iqfile/<sensor>/<SENSOR>_MIPI_api.bin`. release_0907 ships
-these for two sensors only, both genuinely distinct:
-
-    sc430ai.bin   56737fd6
-    imx307.bin    c6bf43fd
-
-An HDR variant, `SC430AI_MIPI_HDR_api.bin`, exists in the vendor tree and is not
-carried -- nothing selects it, and the runtime resolves by driver name alone.
-
-**Not** from the vendor:
-
-    imx335.bin    02a48d0a
-
-release_0907 has no imx335 tuning -- `board/i6c/iqfile/` holds imx307 and
-sc430ai and nothing else -- but `sensor-src/sensor_imx335_mipi.c` is present and
-builds, so the driver exists with no blob to pair it with. This copy is
-OpenIPC's, from openipc/firmware
-`general/package/sigmastar-osdrv-infinity6c/files/sensor/configs/imx335.bin`,
-read at e609afae (file last touched 2026-07-17), sha256
-
-    d1139a2ee4f24a7cf1f488fb5450eeb2321102aaab27be10460001d2d2610e0a
-
-It is the right format for this family rather than an i6e file copied across,
-and that is checkable in the header rather than assumed. These bins open with a
-family/format tag before the `em` magic:
-
-    27 03 65 6d 02 00 ...   infinity6c   imx335(openipc), sc401ai(openipc),
-                                         imx307(vendor), sc430ai(vendor)
-    21 03 65 6d 08 00 ...   infinity6e   imx335
-
-Bytes 8..11 are the payload length, which is the file size less the 32-byte
-header in every case checked. OpenIPC's i6c imx335 carries the i6c tag and the
-i6c variant byte, matching the two vendor bins beside it.
-
-What that check does not establish is which SDK drop tuned it, or on what
-module. OpenIPC's i6c osdrv is known to mix vintages -- a June-2024 `mi.ko`
-against release_0907 libraries on a Nov-2023 BSP -- so treat the tuning as
-plausible and untested rather than matched. Colour on real silicon has not been
-looked at by anyone here.
-
-## venc_fw/
-
-`chagall.bin` is VENC firmware. The vendor's own i6c copy, and unlike
-infinity6e's it does match the vendor tree. Per chip: the i6c copies differ from
-i6e's and from each other across releases.
-
-## The kernel these pair with is not settled
-
-johnchia/linux `sigmastar-infinity6c` is **not** built from this drop, so loading
-these modules on it is unverified.
-
-Its BSP import, b335d21 "0000-infinity6c-kernel-5.10.61.patch", is authored by
-OpenIPC's Viktor in November 2023 and sits directly on vanilla Linux 5.10.61
-(230ca533). Compared against this SDK's own kernel source:
-
-    drivers/sstar          118 of ~1300 files differ
-    whole tree             255 files differ, 60 exist only in the branch
-                           (infinity6c DTS and defconfigs the SDK lacks)
-
-Of the three SSC377 drops, release_0907 is the closest -- 1183 identical BSP
-files against 1157 for 0712 and 1091 for 0602, and only 21 files it lacks
-against 60 and 71 -- which independently corroborates the choice of drop. It is
-still not a match, and the patch postdating all three by a year suggests it was
-cut from a newer SigmaStar release.
-
-**vermagic will not catch a mismatch.** b335d21's own i6c defconfig sets !SMP,
-PREEMPT, MODULE_UNLOAD and THUMB2_KERNEL, composing exactly the string these
-modules carry:
-
-    5.10.61 preempt mod_unload ARMv7 thumb2 p2v8
-
-and CONFIG_MODVERSIONS is off, so insmod would accept them whether or not they
-fit. The pairing therefore has to be argued from the code, not from load-time
-behaviour. Doing that, it looks sound:
+That was previously recorded as unverified. It is no longer: **drop 1230 loads
+and streams on this kernel**, 1080p H.264 at 25fps on an SSC377QE. The argument
+that it should work, kept because it is what made the attempt worth making:
 
   - Every sstar symbol these modules import is exported by the BSP. mi_sys.ko
     has 235 undefined symbols, 81 of them sstar; b335d21's drivers/sstar exports
@@ -231,78 +345,42 @@ behaviour. Doing that, it looks sound:
     sizeof(struct lock_class_key), which 0907's does not -- but that struct is
     `{ }` when lockdep is off, and every i6c defconfig leaves CONFIG_LOCKDEP
     unset, so both compute the same size.
-  - b335d21's other change there is an addition: a kernel-side
-    CAM_OS_RTMUTEX_SIZE that 0907 has no equivalent of. Older modules cannot
-    call what they were never compiled against.
   - The CamOs* declarations the sensor drivers bind to -- CamOsMemAlloc,
     CamOsMemRelease, CamOsPrintf, CamOsUsSleep -- are byte-identical between the
-    two headers; only their line numbers moved.
+    two headers; only their line numbers moved. `mi.ko` exports none of them, so
+    they come from the kernel.
 
-OpenIPC ships a wider spread than this and it works in production: their
-sigmastar-osdrv-infinity6c pairs an mi.ko from a June 2024 drop
-(project_commit.699b9f2 sdk_commit.7d2dfd4 mhal_commit.f76c372) with userspace
-libraries from release_0907 -- the same 3a7aec9/3dcd67a/a7acd5c these modules
-come from -- on this same BSP. Three vintages in one image. Their mi.ko's 103
-sstar imports all resolve against b335d21 too.
+**vermagic will not catch a mismatch**, which is why the whole flavour is in the
+directory name: b335d21's i6c defconfig sets !SMP, PREEMPT, MODULE_UNLOAD and
+THUMB2_KERNEL, composing exactly the string both drops carry --
+`5.10.61 preempt mod_unload ARMv7 thumb2 p2v8` -- and CONFIG_MODVERSIONS is off.
 
-So the pairing is plausible rather than verified. What is not established is
-struct layout across all 118 differing files, and nothing here has been run on
-hardware. Confirm on a board before trusting it, and record the result.
+Of the three SSC377 drops, release_0907 is the closest to this BSP by file count
+(1183 identical BSP files against 1157 for 0712 and 1091 for 0602). That
+corroborated the choice of 0907 at the time; note that it did not predict which
+drop would actually stream, which was the newer one.
 
-### If it does not work on hardware
+---
 
-Cutting a BSP from this SDK's own kernel source is the obvious reflex and the
-most expensive option. Measured against vanilla 5.10.61:
+# Files
 
-    vanilla -> b335d21 (OpenIPC's BSP)   1694 modified  2043 added (27M)  2586 removed
-    vanilla -> release_0907 kernel       1673 modified  2830 added (40M)  2623 removed
-
-The same kind of job OpenIPC already did, about half again as large, and it also
-means rebasing the seven commits that sit on top of b335d21 -- lzma uImage,
-spinand probe-on-type, mtdparts identifier, watchdog magic close, python3
-scripts, i2c warnings, regulatory defaults -- all of which are wanted. It does
-not fully remove the risk either: a kernel built from vendor sources has never
-been run with thingino's config.
-
-So try, in this order:
-
-  1. **b335d21 with these modules.** Free, and the only thing that settles the
-     question. If the MI stack initialises, stop here.
-  2. **OpenIPC's mi.ko on the same kernel.** One file, and it is the pairing
-     they ship, so it separates "these modules are wrong" from "this BSP is
-     wrong". Note it exports one symbol against the vendor set's 833, so it
-     cannot be partially loaded -- an all-or-nothing diagnostic, not a
-     destination.
-  3. **The drop b335d21 was cut from.** Viktor's patch is dated November 2023
-     and matches none of the three 2022 releases; their mi.ko is from a June
-     2024 drop. Obtaining either gives a genuinely matched pair *and* keeps
-     OpenIPC's kernel work. This is the only option with no downside, and it
-     costs a download rather than a port.
-  4. **Cut a BSP from release_0907.** Only if the first three fail. Guarantees
-     the match at the cost above.
-
-Record which of these the port ended up on, and why.
-
-## Not consumed yet
-
-No thingino target builds Infinity6C -- there is no `soc/sigmastar/infinity6c.mk`
-and so no SOC_FAMILY that resolves to this directory. This is staged for a port,
-alongside the userspace half in sigmastar-lib, which the Raptor i6c backend
-needs. Nothing here has been loaded on hardware.
-
-No source is available for the prebuilt artifacts and none is claimed here.
-
-## Files
-
+    --- kmod-5.10.61-1230-uclibc-9.1.0 (3) ---
+    mi.ko  sensor_imx335_mipi.ko  sensor_imx307_mipi.ko
     --- kmod-5.10.61-0907-uclibc-9.1.0 (19) ---
     mi_ai mi_aio mi_ao mi_common mi_disp mi_dummy mi_fb mi_ipu mi_isp mi_ldc
     mi_panel mi_rgn mi_scl mi_sensor mi_shadow mi_sys mi_vcodec mi_venc mi_vif
     --- kmod-5.10.61-0907-glibc-11.1.0 (22) ---
     the same, plus mi_jpd mi_vdec mi_vdisp
     --- blobs ---
-    dfa6a803efce1a92f0386672f2dacdc4  venc_fw/chagall.bin
-    32e7a63d2f6c7393d0d6be1b2b7f3e36  iqfile/isp_api.xml
-    4dac014257206af8cc76fc3ddcc58b5b  iqfile/iqfile0.bin
-    56737fd643c62eedc321a59b3f0436e0  sensor-iq/sc430ai.bin
-    c6bf43fd65598621fa5d8c1627bbde35  sensor-iq/imx307.bin
-    02a48d0a22f485e608778dc8619e75b2  sensor-iq/imx335.bin      (OpenIPC, not vendor)
+    dfa6a803efce1a92f0386672f2dacdc4  venc_fw/0907/chagall.bin
+    68bd2cafe89c641ad027ddbb1bbe48cc  venc_fw/1230/chagall.bin
+    32e7a63d2f6c7393d0d6be1b2b7f3e36  iqfile/0907/isp_api.xml
+    4dac014257206af8cc76fc3ddcc58b5b  iqfile/0907/iqfile0.bin
+    ab3de24d4e44062765db4136cbf10e95  iqfile/1230/isp_api.xml
+    5192b45f6ef2dbeaa8e46bf40fd9747a  iqfile/1230/iqfile0.bin
+    56737fd643c62eedc321a59b3f0436e0  sensor-iq/0907/sc430ai.bin
+    c6bf43fd65598621fa5d8c1627bbde35  sensor-iq/0907/imx307.bin
+    02a48d0a22f485e608778dc8619e75b2  sensor-iq/0907/imx335.bin  (OpenIPC, not vendor)
+    sensor-iq/1230/imx335.bin  (this camera's own)
+
+No source is available for the prebuilt artifacts and none is claimed here.

@@ -26,6 +26,44 @@ The kernel release did not disappear -- it moved into the kmod directory name,
 which is the one place a mismatch is fatal and undetectable. See the family
 files for why.
 
+## Below the family, runtime blobs are keyed by drop
+
+    <family>/venc_fw/<drop>/
+    <family>/iqfile/<drop>/
+    <family>/sensor-iq/<drop>/
+
+These three used to sit directly under the family, which asserts that a chip has
+one VENC firmware and one set of ISP tuning. It does not: they are paired with
+the *vendor drop* that reads them, and a family can carry more than one drop.
+infinity6c now does.
+
+Two of the three are validated at runtime and say so in the log:
+
+    venc_fw     "fw ver:%llx mismatch driver:%llx, pls check ... chagall.bin"
+    sensor-iq   "ooooops,SDK & iqbinfile major version is not match."
+
+sensor-iq is the dangerous one, because a rejected tuning is not a failed boot:
+the ISP falls back to generic tuning and the camera comes up with visibly wrong
+colour. The bins carry a major version at offset 4 -- infinity6c is 2 on drop
+0907 and 5 on drop 1230, infinity6e is 8 -- so the mismatch is checkable
+statically and is recorded in each family file.
+
+iqfile/ has no version field and is keyed the same way by argument rather than
+by measurement: it is read by that drop's own libcus3a.
+
+## Sensor drivers are drop-coupled too, even though they are source
+
+`sensor-src/` stays family-keyed and source-built, because it is source and
+because the same filename is a different driver in each family. But the struct
+it fills, `ms_cus_sensor`, is a *drop* interface, and a driver built against the
+wrong drop's header fails silently rather than loudly -- see infinity6c's file
+for the two occasions this has now bitten.
+
+Where a drop's own headers are not available, that drop carries prebuilt sensor
+drivers in its `kmod-` directory instead, and `soc/sigmastar/<family>.mk` sets
+`SIGMASTAR_SENSOR := prebuilt` so `sigmastar-sdk.mk` does not build over them.
+infinity6c's 1230 is the only such drop today.
+
 ## sensor-src-common/
 
 `Makefile` and `sensor_config.c`, which every family's `sensor-src/` symlinks to
